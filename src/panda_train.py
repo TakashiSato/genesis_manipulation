@@ -87,7 +87,7 @@ def get_cfgs():
         # termination conditions
         # "termination_if_roll_greater_than": 90,   # degree
         # "termination_if_pitch_greater_than": 90,  # degree
-        "termination_if_reach_threshold": 0.1,  # 目標位置に50cm以内に近づいたら成功
+        "termination_if_reach_threshold": 0.03,  # 目標位置に3cm以内に近づいたら成功
         # base pose
         "base_init_pos": [0.0, 0.0, 0.0],
         "base_init_quat": [1.0, 0.0, 0.0, 0.0],  # w, x, y, z
@@ -114,10 +114,10 @@ def get_cfgs():
         "reward_scales": {
             "reaching_pose": 1.0,          # エンドエフェクタの位置追従
             "time_efficiency": 0.5,        # 時間効率の重み
-            # "action_rate": -0.1,           # アクション変化の抑制
+            "action_rate": -0.05,           # アクション変化の抑制
             # "action_regulation": -0.01,     # アクション大きさの抑制
             # "joint_acc": -0.1,             # 関節加速度の抑制
-            # "joint_limit": -0.5,           # 関節限界への接近抑制
+            "joint_limit": -0.01,           # 関節限界への接近抑制
         },
     }
 
@@ -125,8 +125,8 @@ def get_cfgs():
         "num_commands": 3,  # x, y, z position of target
         "pos_range": [  # Target position ranges
             [0.3, 0.7],   # x
-            [-0.5, 0.5],   # y
-            [0.2, 1.0],    # z
+            [-0.4, 0.4],   # y
+            [0.2, 0.8],    # z
         ],
     }
 
