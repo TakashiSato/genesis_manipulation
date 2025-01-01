@@ -2,6 +2,10 @@ import argparse
 import os
 import pickle
 import shutil
+import time
+from collections import deque
+
+import torch
 
 from panda_env import PandaEnv
 from rsl_rl.runners import OnPolicyRunner
@@ -40,7 +44,7 @@ def get_train_cfg(exp_name, max_iterations):
             "load_run": -1,
             "log_interval": 1,
             "max_iterations": max_iterations,
-            "num_steps_per_env": 24,
+            "num_steps_per_env": 100,
             "policy_class_name": "ActorCritic",
             "record_interval": -1,
             "resume": False,
@@ -81,13 +85,14 @@ def get_cfgs():
         "kp": 4500.0,  # Position gain
         "kd": 450.0,   # Velocity gain
         # termination conditions
-        "termination_if_roll_greater_than": 90,   # degree
-        "termination_if_pitch_greater_than": 90,  # degree
+        # "termination_if_roll_greater_than": 90,   # degree
+        # "termination_if_pitch_greater_than": 90,  # degree
+        "termination_if_reach_threshold": 0.5,  # 目標位置に50cm以内に近づいたら成功
         # base pose
         "base_init_pos": [0.0, 0.0, 0.0],
         "base_init_quat": [1.0, 0.0, 0.0, 0.0],  # w, x, y, z
         "episode_length_s": 10.0,
-        "resampling_time_s": 2.0,
+        "resampling_time_s": 10.0,
         "action_scale": 0.5,
         "simulate_action_latency": True,
         "clip_actions": 1.0,
@@ -108,18 +113,17 @@ def get_cfgs():
         "tracking_sigma": 0.25,
         "reward_scales": {
             "reaching_pose": 1.0,          # エンドエフェクタの位置追従
-            "action_rate": -0.1,           # アクション変化の抑制
-            "action_regulation": -0.01,     # アクション大きさの抑制
-            "joint_acc": -0.1,             # 関節加速度の抑制
-            "joint_limit": -0.5,           # 関節限界への接近抑制
+            # "action_rate": -0.1,           # アクション変化の抑制
+            # "action_regulation": -0.01,     # アクション大きさの抑制
+            # "joint_acc": -0.1,             # 関節加速度の抑制
+            # "joint_limit": -0.5,           # 関節限界への接近抑制
         },
     }
 
     command_cfg = {
         "num_commands": 3,  # x, y, z position of target
-        "resampling_time_s": 2.0,
         "pos_range": [  # Target position ranges
-            [-0.3, 0.3],   # x
+            [0.3, 0.5],   # x
             [-0.3, 0.3],   # y
             [0.2, 0.5],    # z
         ],

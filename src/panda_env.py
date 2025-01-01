@@ -1,7 +1,12 @@
 import torch
 import math
 import genesis as gs
-from genesis.utils.geom import quat_to_xyz, transform_by_quat, inv_quat, transform_quat_by_quat
+from genesis.utils.geom import (
+    quat_to_xyz,
+    transform_by_quat,
+    inv_quat,
+    transform_quat_by_quat,
+)
 import numpy as np
 
 
@@ -10,7 +15,16 @@ def gs_rand_float(lower, upper, shape, device):
 
 
 class PandaEnv:
-    def __init__(self, num_envs, env_cfg, obs_cfg, reward_cfg, command_cfg, show_viewer=False, device="cuda"):
+    def __init__(
+        self,
+        num_envs,
+        env_cfg,
+        obs_cfg,
+        reward_cfg,
+        command_cfg,
+        show_viewer=False,
+        device="cuda",
+    ):
         self.device = torch.device(device)
 
         self.num_envs = num_envs
@@ -54,16 +68,24 @@ class PandaEnv:
         self.scene.add_entity(gs.morphs.URDF(file="urdf/plane/plane.urdf", fixed=True))
 
         # add robot
-        self.base_init_pos = torch.tensor(self.env_cfg["base_init_pos"], device=self.device)
-        self.base_init_quat = torch.tensor(self.env_cfg["base_init_quat"], device=self.device)
+        self.base_init_pos = torch.tensor(
+            self.env_cfg["base_init_pos"], device=self.device
+        )
+        self.base_init_quat = torch.tensor(
+            self.env_cfg["base_init_quat"], device=self.device
+        )
         self.inv_base_init_quat = inv_quat(self.base_init_quat)
-        # self.robot = self.scene.add_entity(
-        #     gs.morphs.URDF(
-        #         file="urdf/go2/urdf/go2.urdf",
-        #         pos=self.base_init_pos.cpu().numpy(),
-        #         quat=self.base_init_quat.cpu().numpy(),
-        #     ),
-        # )
+
+        # add target pose sphere
+        self.target_sphere = self.scene.add_entity(
+            gs.morphs.Sphere(
+                pos=(0.5, 0.0, 0.2),
+                radius=0.01,
+                visualization=True,
+                collision=False,
+                fixed=True,
+            )
+        )
 
         self.robot = self.scene.add_entity(
             gs.morphs.MJCF(file="xml/franka_emika_panda/panda.xml")
@@ -76,7 +98,10 @@ class PandaEnv:
         self.scene.build(n_envs=num_envs)
 
         # names to indices
-        self.motor_dofs = [self.robot.get_joint(name).dof_idx_local for name in self.env_cfg["dof_names"]]
+        self.motor_dofs = [
+            self.robot.get_joint(name).dof_idx_local
+            for name in self.env_cfg["dof_names"]
+        ]
 
         # PD control parameters
         self.robot.set_dofs_kp([self.env_cfg["kp"]] * self.num_actions, self.motor_dofs)
@@ -87,40 +112,66 @@ class PandaEnv:
         for name in self.reward_scales.keys():
             self.reward_scales[name] *= self.dt
             self.reward_functions[name] = getattr(self, "_reward_" + name)
-            self.episode_sums[name] = torch.zeros((self.num_envs,), device=self.device, dtype=gs.tc_float)
+            self.episode_sums[name] = torch.zeros(
+                (self.num_envs,), device=self.device, dtype=gs.tc_float
+            )
 
         # initialize buffers
-        self.base_lin_vel = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
-        self.base_ang_vel = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
-        self.projected_gravity = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
-        self.global_gravity = torch.tensor([0.0, 0.0, -1.0], device=self.device, dtype=gs.tc_float).repeat(
-            self.num_envs, 1
+        self.base_lin_vel = torch.zeros(
+            (self.num_envs, 3), device=self.device, dtype=gs.tc_float
         )
-        self.obs_buf = torch.zeros((self.num_envs, self.num_obs), device=self.device, dtype=gs.tc_float)
-        self.rew_buf = torch.zeros((self.num_envs,), device=self.device, dtype=gs.tc_float)
-        self.reset_buf = torch.ones((self.num_envs,), device=self.device, dtype=gs.tc_int)
-        self.episode_length_buf = torch.zeros((self.num_envs,), device=self.device, dtype=gs.tc_int)
+        self.base_ang_vel = torch.zeros(
+            (self.num_envs, 3), device=self.device, dtype=gs.tc_float
+        )
+        self.projected_gravity = torch.zeros(
+            (self.num_envs, 3), device=self.device, dtype=gs.tc_float
+        )
+        self.global_gravity = torch.tensor(
+            [0.0, 0.0, -1.0], device=self.device, dtype=gs.tc_float
+        ).repeat(self.num_envs, 1)
+        self.obs_buf = torch.zeros(
+            (self.num_envs, self.num_obs), device=self.device, dtype=gs.tc_float
+        )
+        self.rew_buf = torch.zeros(
+            (self.num_envs,), device=self.device, dtype=gs.tc_float
+        )
+        self.reset_buf = torch.ones(
+            (self.num_envs,), device=self.device, dtype=gs.tc_int
+        )
+        self.episode_length_buf = torch.zeros(
+            (self.num_envs,), device=self.device, dtype=gs.tc_int
+        )
         self.commands = torch.zeros(
             (self.num_envs, 3),  # [num_envs, 3] の形状（xyz座標）
-            device=self.device, 
-            dtype=gs.tc_float
+            device=self.device,
+            dtype=gs.tc_float,
         )
         self.commands_scale = torch.tensor(
             [
-                pos_range[1] - pos_range[0] for pos_range in self.command_cfg["pos_range"]
+                pos_range[1] - pos_range[0]
+                for pos_range in self.command_cfg["pos_range"]
             ],  # 各軸の範囲の大きさをスケールとして使用
             device=self.device,
             dtype=gs.tc_float,
         )
-        self.actions = torch.zeros((self.num_envs, self.num_actions), device=self.device, dtype=gs.tc_float)
+        self.actions = torch.zeros(
+            (self.num_envs, self.num_actions), device=self.device, dtype=gs.tc_float
+        )
         self.last_actions = torch.zeros_like(self.actions)
         self.dof_pos = torch.zeros_like(self.actions)
         self.dof_vel = torch.zeros_like(self.actions)
         self.last_dof_vel = torch.zeros_like(self.actions)
-        self.base_pos = torch.zeros((self.num_envs, 3), device=self.device, dtype=gs.tc_float)
-        self.base_quat = torch.zeros((self.num_envs, 4), device=self.device, dtype=gs.tc_float)
+        self.base_pos = torch.zeros(
+            (self.num_envs, 3), device=self.device, dtype=gs.tc_float
+        )
+        self.base_quat = torch.zeros(
+            (self.num_envs, 4), device=self.device, dtype=gs.tc_float
+        )
         self.default_dof_pos = torch.tensor(
-            [self.env_cfg["default_joint_angles"][name] for name in self.env_cfg["dof_names"]],
+            [
+                self.env_cfg["default_joint_angles"][name]
+                for name in self.env_cfg["dof_names"]
+            ],
             device=self.device,
             dtype=gs.tc_float,
         )
@@ -131,15 +182,22 @@ class PandaEnv:
         # 各環境に対して3次元（xyz）の目標位置を生成
         for i in range(3):  # x, y, z座標それぞれに対して
             pos_range = self.command_cfg["pos_range"][i]
-            self.commands[envs_idx, i] = torch.rand(
-                len(envs_idx), 
-                device=self.device
-            ) * (pos_range[1] - pos_range[0]) + pos_range[0]
+            self.commands[envs_idx, i] = (
+                torch.rand(len(envs_idx), device=self.device)
+                * (pos_range[1] - pos_range[0])
+                + pos_range[0]
+            )
 
     def step(self, actions):
-        self.actions = torch.clip(actions, -self.env_cfg["clip_actions"], self.env_cfg["clip_actions"])
-        exec_actions = self.last_actions if self.simulate_action_latency else self.actions
-        target_dof_pos = exec_actions * self.env_cfg["action_scale"] + self.default_dof_pos
+        self.actions = torch.clip(
+            actions, -self.env_cfg["clip_actions"], self.env_cfg["clip_actions"]
+        )
+        exec_actions = (
+            self.last_actions if self.simulate_action_latency else self.actions
+        )
+        target_dof_pos = (
+            exec_actions * self.env_cfg["action_scale"] + self.default_dof_pos
+        )
         self.robot.control_dofs_position(target_dof_pos, self.motor_dofs)
         self.scene.step()
 
@@ -148,11 +206,18 @@ class PandaEnv:
         self.base_pos[:] = self.robot.get_pos()
         self.base_quat[:] = self.robot.get_quat()
         self.base_euler = quat_to_xyz(
-            transform_quat_by_quat(torch.ones_like(self.base_quat) * self.inv_base_init_quat, self.base_quat)
+            transform_quat_by_quat(
+                torch.ones_like(self.base_quat) * self.inv_base_init_quat,
+                self.base_quat,
+            )
         )
 
         ee_link = self.robot.get_link("hand")
         self.ee_pos = ee_link.get_pos()
+        self.pos_error = torch.sum(
+            torch.square((self.commands - self.ee_pos) / self.commands_scale),
+            dim=1,
+        )
 
         inv_base_quat = inv_quat(self.base_quat)
         self.base_lin_vel[:] = transform_by_quat(self.robot.get_vel(), inv_base_quat)
@@ -162,23 +227,36 @@ class PandaEnv:
         self.dof_vel[:] = self.robot.get_dofs_velocity(self.motor_dofs)
 
         # resample commands
-        envs_idx = (
-            (self.episode_length_buf % int(self.env_cfg["resampling_time_s"] / self.dt) == 0)
-            .nonzero(as_tuple=False)
-            .flatten()
-        )
-        self._resample_commands(envs_idx)
+        # envs_idx = (
+        #     (
+        #         self.episode_length_buf
+        #         % int(self.env_cfg["resampling_time_s"] / self.dt)
+        #         == 0
+        #     )
+        #     .nonzero(as_tuple=False)
+        #     .flatten()
+        # )
+        # self._resample_commands(envs_idx)
 
         # check termination and reset
+        # self.max_episode_length = 1000000000000
         self.reset_buf = self.episode_length_buf > self.max_episode_length
-        self.reset_buf |= torch.abs(self.base_euler[:, 1]) > self.env_cfg["termination_if_pitch_greater_than"]
-        self.reset_buf |= torch.abs(self.base_euler[:, 0]) > self.env_cfg["termination_if_roll_greater_than"]
+        # print(f"reset_buf: {self.reset_buf} episode_length_buf: {self.episode_length_buf}")
+
+        # 目標位置への到達判定による終了条件
+        reached = self.pos_error < self.env_cfg["termination_if_reach_threshold"]
+        # print(f"commands: {self.commands}")
+        # print(f"pos_error: {self.pos_error}, reached: {reached}")
+        self.reset_buf |= reached
 
         time_out_idx = (self.episode_length_buf > self.max_episode_length).nonzero(as_tuple=False).flatten()
         self.extras["time_outs"] = torch.zeros_like(self.reset_buf, device=self.device, dtype=gs.tc_float)
         self.extras["time_outs"][time_out_idx] = 1.0
 
-        self.reset_idx(self.reset_buf.nonzero(as_tuple=False).flatten())
+        reset_indices = self.reset_buf.nonzero(as_tuple=False).flatten()
+        self.reset_idx(reset_indices)
+        if len(reset_indices) > 0:
+            print(f"reset_indices: {reset_indices}, reached: {reached}, time_outs: {self.extras['time_outs']}")
 
         # compute reward
         self.rew_buf[:] = 0.0
@@ -243,11 +321,15 @@ class PandaEnv:
         self.extras["episode"] = {}
         for key in self.episode_sums.keys():
             self.extras["episode"]["rew_" + key] = (
-                torch.mean(self.episode_sums[key][envs_idx]).item() / self.env_cfg["episode_length_s"]
+                torch.mean(self.episode_sums[key][envs_idx]).item()
+                / self.env_cfg["episode_length_s"]
             )
             self.episode_sums[key][envs_idx] = 0.0
 
         self._resample_commands(envs_idx)
+
+        # 球体の位置を更新（表示されている環境の目標位置を使用）
+        self.target_sphere.set_pos(self.commands.cpu().numpy())
 
     def reset(self):
         self.reset_buf[:] = True
@@ -263,7 +345,7 @@ class PandaEnv:
             torch.square(
                 (self.commands - self.ee_pos) / self.commands_scale  # スケールで正規化
             ),
-            dim=1
+            dim=1,
         )
         return torch.exp(-pos_error / self.reward_cfg["tracking_sigma"])
 
@@ -283,25 +365,28 @@ class PandaEnv:
     def _reward_joint_limit(self):
         """関節限界への接近を抑制"""
         # 各関節の可動範囲を定義
-        joint_ranges = torch.tensor([
-            [-2.8973, 2.8973],    # joint1
-            [-1.7628, 1.7628],    # joint2
-            [-2.8973, 2.8973],    # joint3
-            [-3.0718, -0.0698],   # joint4
-            [-2.8973, 2.8973],    # joint5
-            [-0.0175, 3.7525],    # joint6
-            [-2.8973, 2.8973],    # joint7
-        ], device=self.device)
+        joint_ranges = torch.tensor(
+            [
+                [-2.8973, 2.8973],  # joint1
+                [-1.7628, 1.7628],  # joint2
+                [-2.8973, 2.8973],  # joint3
+                [-3.0718, -0.0698],  # joint4
+                [-2.8973, 2.8973],  # joint5
+                [-0.0175, 3.7525],  # joint6
+                [-2.8973, 2.8973],  # joint7
+            ],
+            device=self.device,
+        )
 
         # 各関節の可動範囲の中心を計算
         joint_centers = (joint_ranges[:, 1] + joint_ranges[:, 0]) / 2
-        
+
         # 現在の関節角度と中心位置との差を計算
         joint_deviations = torch.abs(self.dof_pos - joint_centers)
-        
+
         # 可動範囲の半分の大きさで正規化
         joint_ranges_half = (joint_ranges[:, 1] - joint_ranges[:, 0]) / 2
         normalized_deviations = joint_deviations / joint_ranges_half
-        
+
         # ペナルティを計算（関節限界に近づくほど大きくなる）
         return torch.sum(torch.square(normalized_deviations), dim=1)
