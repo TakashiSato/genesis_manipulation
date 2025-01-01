@@ -182,17 +182,17 @@ class PandaEnv:
     def _resample_commands(self, envs_idx):
         """目標位置をリサンプリング"""
         # 各環境に対して3次元（xyz）の目標位置を生成
-        # for i in range(3):  # x, y, z座標それぞれに対して
-        #     pos_range = self.command_cfg["pos_range"][i]
-        #     self.commands[envs_idx, i] = (
-        #         torch.rand(len(envs_idx), device=self.device)
-        #         * (pos_range[1] - pos_range[0])
-        #         + pos_range[0]
-        #     )
+        for i in range(3):  # x, y, z座標それぞれに対して
+            pos_range = self.command_cfg["pos_range"][i]
+            self.commands[envs_idx, i] = (
+                torch.rand(len(envs_idx), device=self.device)
+                * (pos_range[1] - pos_range[0])
+                + pos_range[0]
+            )
 
-        self.commands[envs_idx, 0] = 0.5
-        self.commands[envs_idx, 1] = 0.0
-        self.commands[envs_idx, 2] = 0.8
+        # self.commands[envs_idx, 0] = 0.5
+        # self.commands[envs_idx, 1] = 0.0
+        # self.commands[envs_idx, 2] = 0.8
 
     def step(self, actions):
         # 観測値の各要素をプリント
@@ -266,8 +266,6 @@ class PandaEnv:
 
         reset_indices = self.reset_buf.nonzero(as_tuple=False).flatten()
         self.reset_idx(reset_indices)
-        # if len(reset_indices) > 0:
-        #     print(f"reset_indices: {reset_indices}, reached: {reached}, time_outs: {self.extras['time_outs']}")
 
         # compute reward
         self.rew_buf[:] = 0.0
@@ -357,10 +355,25 @@ class PandaEnv:
 
     # ------------ reward functions----------------
     def _reward_reaching_pose(self):
-        """エンドエフェクタの目標位置への到達を報酬化（ユークリッド距離ベース）"""
-        # ユークリッド距離を計算
-        pos_error = torch.norm(self.commands - self.ee_pos, dim=1)  # L2ノルム（ユークリッド距離）
-        return torch.exp(-pos_error / self.reward_cfg["tracking_sigma"])
+        """位置への到達を報酬化"""
+        pos_error_xyz = torch.abs(self.commands - self.ee_pos)
+        reward_xyz = -pos_error_xyz
+        return torch.sum(reward_xyz, dim=1)
+
+    def _reward_time_efficiency(self):
+        """時間効率を報酬化（ペナルティベース）"""
+        pos_error_xyz = torch.abs(self.commands - self.ee_pos)
+        success_mask = torch.all(pos_error_xyz < self.env_cfg["termination_if_reach_threshold"], dim=1)
+        
+        # 時間に基づくペナルティ（-1.0 → 0.0）
+        time_penalty = -(self.episode_length_buf / self.max_episode_length)
+        
+        # 成功時のみペナルティを考慮
+        return torch.where(
+            success_mask,
+            time_penalty,
+            torch.ones_like(time_penalty) * -1.0  # 未到達時は最大ペナルティ
+        )
 
     def _reward_action_rate(self):
         """アクションの急激な変化を抑制"""

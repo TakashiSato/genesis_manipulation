@@ -22,9 +22,9 @@ def get_train_cfg(exp_name, max_iterations):
             "entropy_coef": 0.01,
             "gamma": 0.99,
             "lam": 0.95,
-            "learning_rate": 0.001,
+            "learning_rate": 0.0003,
             "max_grad_norm": 1.0,
-            "num_learning_epochs": 5,
+            "num_learning_epochs": 8,
             "num_mini_batches": 4,
             "schedule": "adaptive",
             "use_clipped_value_loss": True,
@@ -112,7 +112,8 @@ def get_cfgs():
     reward_cfg = {
         "tracking_sigma": 0.25,
         "reward_scales": {
-            "reaching_pose": 0.1,          # エンドエフェクタの位置追従
+            "reaching_pose": 1.0,          # エンドエフェクタの位置追従
+            "time_efficiency": 0.5,        # 時間効率の重み
             # "action_rate": -0.1,           # アクション変化の抑制
             # "action_regulation": -0.01,     # アクション大きさの抑制
             # "joint_acc": -0.1,             # 関節加速度の抑制
@@ -123,9 +124,9 @@ def get_cfgs():
     command_cfg = {
         "num_commands": 3,  # x, y, z position of target
         "pos_range": [  # Target position ranges
-            [0.3, 0.8],   # x
+            [0.3, 0.7],   # x
             [-0.5, 0.5],   # y
-            [0.2, 1.5],    # z
+            [0.2, 1.0],    # z
         ],
     }
 
@@ -155,8 +156,8 @@ def main():
         obs_cfg=obs_cfg,
         reward_cfg=reward_cfg,
         command_cfg=command_cfg,
-        show_viewer=True,
-        # show_viewer=False,
+        # show_viewer=True,
+        show_viewer=False,
 
     )
 

@@ -15,7 +15,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="panda-reaching")
     parser.add_argument("--ckpt", type=int, default=1000)
-    parser.add_argument("--resampling_time", type=float, default=2.0)  # 目標位置の再サンプリング時間[s]
+    parser.add_argument("--resampling_time", type=float, default=3.0)  # 目標位置の再サンプリング時間[s]
     args = parser.parse_args()
 
     gs.init()
@@ -42,24 +42,8 @@ def main():
 
     obs, _ = env.reset()
 
-    # env._resample_commands(torch.arange(1, device=env.device))
-    # obs = env.get_observations()
-
-    last_resampling_time = time.time()
-
     with torch.no_grad():
         while True:  # 無限ループで実行
-            current_time = time.time()
-            
-            # 一定時間経過したら目標位置を再サンプリング
-            # if current_time - last_resampling_time > args.resampling_time:
-            #     env._resample_commands(torch.arange(1, device=env.device))
-            #     last_resampling_time = current_time
-            #     print(f"Target position: {env.commands[0].cpu().numpy()}")  # 目標位置を表示
-                
-            #     # 観測情報を更新
-            #     obs = env.get_observations()
-            
             actions = policy(obs)
             obs, _, rews, dones, infos = env.step(actions)
 
