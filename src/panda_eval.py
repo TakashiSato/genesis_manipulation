@@ -41,6 +41,10 @@ def main():
     policy = runner.get_inference_policy(device="cuda:0")
 
     obs, _ = env.reset()
+
+    # env._resample_commands(torch.arange(1, device=env.device))
+    # obs = env.get_observations()
+
     last_resampling_time = time.time()
 
     with torch.no_grad():
@@ -48,21 +52,16 @@ def main():
             current_time = time.time()
             
             # 一定時間経過したら目標位置を再サンプリング
-            if current_time - last_resampling_time > args.resampling_time:
-                env._resample_commands(torch.arange(1, device=env.device))
-                last_resampling_time = current_time
-                print(f"Target position: {env.commands[0].cpu().numpy()}")  # 目標位置を表示
+            # if current_time - last_resampling_time > args.resampling_time:
+            #     env._resample_commands(torch.arange(1, device=env.device))
+            #     last_resampling_time = current_time
+            #     print(f"Target position: {env.commands[0].cpu().numpy()}")  # 目標位置を表示
                 
-                # 観測情報を更新
-                obs = env.get_observations()
+            #     # 観測情報を更新
+            #     obs = env.get_observations()
             
             actions = policy(obs)
             obs, _, rews, dones, infos = env.step(actions)
-            # 目標位置とエンドエフェクタの位置の誤差を計算して表示
-            target_pos = env.commands[0].cpu().numpy()
-            ee_pos = env.ee_pos[0].cpu().numpy()
-            error = np.linalg.norm(target_pos - ee_pos)
-            # print(f"Target: {target_pos}, Current: {ee_pos}, Error: {error}")
 
 
 if __name__ == "__main__":

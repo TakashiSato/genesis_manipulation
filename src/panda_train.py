@@ -87,15 +87,15 @@ def get_cfgs():
         # termination conditions
         # "termination_if_roll_greater_than": 90,   # degree
         # "termination_if_pitch_greater_than": 90,  # degree
-        "termination_if_reach_threshold": 0.5,  # 目標位置に50cm以内に近づいたら成功
+        "termination_if_reach_threshold": 0.1,  # 目標位置に50cm以内に近づいたら成功
         # base pose
         "base_init_pos": [0.0, 0.0, 0.0],
         "base_init_quat": [1.0, 0.0, 0.0, 0.0],  # w, x, y, z
         "episode_length_s": 10.0,
         "resampling_time_s": 10.0,
-        "action_scale": 0.5,
+        "action_scale": 1.0,
         "simulate_action_latency": True,
-        "clip_actions": 1.0,
+        "clip_actions": 3.14,
     }
 
     obs_cfg = {
@@ -112,7 +112,7 @@ def get_cfgs():
     reward_cfg = {
         "tracking_sigma": 0.25,
         "reward_scales": {
-            "reaching_pose": 1.0,          # エンドエフェクタの位置追従
+            "reaching_pose": 0.1,          # エンドエフェクタの位置追従
             # "action_rate": -0.1,           # アクション変化の抑制
             # "action_regulation": -0.01,     # アクション大きさの抑制
             # "joint_acc": -0.1,             # 関節加速度の抑制
@@ -123,9 +123,9 @@ def get_cfgs():
     command_cfg = {
         "num_commands": 3,  # x, y, z position of target
         "pos_range": [  # Target position ranges
-            [0.3, 0.5],   # x
-            [-0.3, 0.3],   # y
-            [0.2, 0.5],    # z
+            [0.3, 0.8],   # x
+            [-0.5, 0.5],   # y
+            [0.2, 1.5],    # z
         ],
     }
 
@@ -155,8 +155,8 @@ def main():
         obs_cfg=obs_cfg,
         reward_cfg=reward_cfg,
         command_cfg=command_cfg,
-        # show_viewer=True,
-        show_viewer=False,
+        show_viewer=True,
+        # show_viewer=False,
 
     )
 

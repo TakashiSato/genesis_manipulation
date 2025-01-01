@@ -182,15 +182,27 @@ class PandaEnv:
     def _resample_commands(self, envs_idx):
         """目標位置をリサンプリング"""
         # 各環境に対して3次元（xyz）の目標位置を生成
-        for i in range(3):  # x, y, z座標それぞれに対して
-            pos_range = self.command_cfg["pos_range"][i]
-            self.commands[envs_idx, i] = (
-                torch.rand(len(envs_idx), device=self.device)
-                * (pos_range[1] - pos_range[0])
-                + pos_range[0]
-            )
+        # for i in range(3):  # x, y, z座標それぞれに対して
+        #     pos_range = self.command_cfg["pos_range"][i]
+        #     self.commands[envs_idx, i] = (
+        #         torch.rand(len(envs_idx), device=self.device)
+        #         * (pos_range[1] - pos_range[0])
+        #         + pos_range[0]
+        #     )
+
+        self.commands[envs_idx, 0] = 0.5
+        self.commands[envs_idx, 1] = 0.0
+        self.commands[envs_idx, 2] = 0.8
 
     def step(self, actions):
+        # 観測値の各要素をプリント
+        # print("Observation components:")
+        # print("- commands:", self.obs_buf[:, :3])  # 最初の3次元
+        # print("- dof_pos:", self.obs_buf[:, 3:10]) 
+        # print("- dof_vel:", self.obs_buf[:, 10:17])
+        # print("- last_actions:", self.obs_buf[:, 17:24])
+        # print("- actions:", self.obs_buf[:, 24:31])
+
         self.actions = torch.clip(
             actions, -self.env_cfg["clip_actions"], self.env_cfg["clip_actions"]
         )
@@ -216,10 +228,7 @@ class PandaEnv:
 
         ee_link = self.robot.get_link("hand")
         self.ee_pos = ee_link.get_pos()
-        self.pos_error = torch.sum(
-            torch.square((self.commands - self.ee_pos) / self.commands_scale),
-            dim=1,
-        )
+        self.pos_error = torch.norm(self.commands - self.ee_pos, dim=1)  # ユークリッド距離
 
         inv_base_quat = inv_quat(self.base_quat)
         self.base_lin_vel[:] = transform_by_quat(self.robot.get_vel(), inv_base_quat)
@@ -282,6 +291,13 @@ class PandaEnv:
         self.last_actions[:] = self.actions[:]
         self.last_dof_vel[:] = self.dof_vel[:]
 
+        # 現在の状態をプリント
+        # print("Current state:")
+        # print("Target position:", self.commands[0])  # 目標位置
+        # print("Current EE position:", self.ee_pos[0])  # 現在の手先位置
+        # print("Position error:", self.pos_error[0])  # 位置誤差
+        # print("Generated action:", actions[0])  # 生成されたアクション
+
         return self.obs_buf, None, self.rew_buf, self.reset_buf, self.extras
 
     def get_observations(self):
@@ -341,15 +357,9 @@ class PandaEnv:
 
     # ------------ reward functions----------------
     def _reward_reaching_pose(self):
-        """エンドエフェクタの目標位置への到達を報酬化"""
-        # 各環境ごとの目標位置との誤差を計算
-        # self.commands: [num_envs, 3], ee_pos: [num_envs, 3]
-        pos_error = torch.sum(
-            torch.square(
-                (self.commands - self.ee_pos) / self.commands_scale  # スケールで正規化
-            ),
-            dim=1,
-        )
+        """エンドエフェクタの目標位置への到達を報酬化（ユークリッド距離ベース）"""
+        # ユークリッド距離を計算
+        pos_error = torch.norm(self.commands - self.ee_pos, dim=1)  # L2ノルム（ユークリッド距離）
         return torch.exp(-pos_error / self.reward_cfg["tracking_sigma"])
 
     def _reward_action_rate(self):
