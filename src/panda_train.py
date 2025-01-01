@@ -116,7 +116,7 @@ def get_cfgs():
             "time_efficiency": 0.5,        # 時間効率の重み
             "action_rate": -0.05,           # アクション変化の抑制
             # "action_regulation": -0.01,     # アクション大きさの抑制
-            # "joint_acc": -0.1,             # 関節加速度の抑制
+            "joint_acc": -0.1,             # 関節加速度の抑制
             "joint_limit": -0.01,           # 関節限界への接近抑制
         },
     }

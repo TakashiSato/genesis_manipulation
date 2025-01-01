@@ -380,9 +380,14 @@ class PandaEnv:
         return torch.sum(torch.square(self.last_actions - self.actions), dim=1)
 
     def _reward_joint_acc(self):
-        """関節加速度を抑制"""
+        """関節加速度を抑制（スケーリング調整版）"""
         joint_acc = (self.dof_vel - self.last_dof_vel) / self.dt
-        return torch.sum(torch.square(joint_acc), dim=1)
+        
+        # 各関節の加速度を個別に正規化
+        normalized_acc = joint_acc / (2.0 * self.env_cfg["clip_actions"] / (self.dt * self.dt))
+        
+        # 二乗和の平均を取ることでスケーリング
+        return -torch.mean(torch.square(normalized_acc), dim=1)
 
     def _reward_action_regulation(self):
         """アクションの大きさを抑制"""
