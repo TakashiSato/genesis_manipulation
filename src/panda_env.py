@@ -26,6 +26,7 @@ class PandaEnv:
         device="cuda",
     ):
         self.device = torch.device(device)
+        self.show_viewer = show_viewer
 
         self.num_envs = num_envs
         self.num_obs = obs_cfg["num_obs"]
@@ -77,15 +78,16 @@ class PandaEnv:
         self.inv_base_init_quat = inv_quat(self.base_init_quat)
 
         # add target pose sphere
-        self.target_sphere = self.scene.add_entity(
-            gs.morphs.Sphere(
-                pos=(0.5, 0.0, 0.2),
-                radius=0.01,
-                visualization=True,
-                collision=False,
-                fixed=True,
+        if self.show_viewer:
+            self.target_sphere = self.scene.add_entity(
+                gs.morphs.Sphere(
+                    pos=(0.5, 0.0, 0.2),
+                    radius=0.01,
+                    visualization=True,
+                    collision=False,
+                    fixed=True,
+                )
             )
-        )
 
         self.robot = self.scene.add_entity(
             gs.morphs.MJCF(file="xml/franka_emika_panda/panda.xml")
@@ -255,8 +257,8 @@ class PandaEnv:
 
         reset_indices = self.reset_buf.nonzero(as_tuple=False).flatten()
         self.reset_idx(reset_indices)
-        if len(reset_indices) > 0:
-            print(f"reset_indices: {reset_indices}, reached: {reached}, time_outs: {self.extras['time_outs']}")
+        # if len(reset_indices) > 0:
+        #     print(f"reset_indices: {reset_indices}, reached: {reached}, time_outs: {self.extras['time_outs']}")
 
         # compute reward
         self.rew_buf[:] = 0.0
@@ -329,7 +331,8 @@ class PandaEnv:
         self._resample_commands(envs_idx)
 
         # 球体の位置を更新（表示されている環境の目標位置を使用）
-        self.target_sphere.set_pos(self.commands.cpu().numpy())
+        if self.show_viewer:
+            self.target_sphere.set_pos(self.commands.cpu().numpy())
 
     def reset(self):
         self.reset_buf[:] = True
