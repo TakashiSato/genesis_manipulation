@@ -518,21 +518,31 @@ class PandaEnv:
         return torch.sum(torch.square(normalized_deviations), dim=1)
 
     def _reward_obstacle_avoidance(self):
-        """障害物回避の報酬（逆数ペナルティと衝突ペナルティ）"""
-        # 障害物との距離の逆数を計算し、距離が小さいほどペナルティが大きくなるようにする
-        inverse_distances = 1.0 / (self.obstacle_distances + 1e-6)  # 0除算を避けるために小さな値を加算
+        """障害物回避の報酬（距離に基づくペナルティ）"""
+        collision_threshold = self.obstacle_radius
+        margin_threshold = self.obstacle_radius + self.obstacle_margin
 
-        # 各リンクと障害物の距離の逆数を合計
-        total_penalty = torch.sum(torch.sum(inverse_distances, dim=1), dim=1)
+        # 距離がmargin_thresholdより遠い場合はペナルティなし
+        penalty = torch.zeros_like(self.obstacle_distances)
 
-        # 衝突ペナルティの追加
-        collision_threshold = self.obstacle_radius + self.obstacle_margin
-        collision_penalty = torch.sum(
-            (self.obstacle_distances < collision_threshold).float() * 100.0,  # 衝突時に大きなペナルティ
-            dim=(1, 2)
+        # 距離がcollision_threshold以下の場合、ペナルティを-1から0の範囲に線形に設定
+        collision_penalty = torch.where(
+            self.obstacle_distances < collision_threshold,
+            -1.0 + (self.obstacle_distances / collision_threshold),
+            penalty
         )
+
+        # 距離がmargin_thresholdより近く、collision_thresholdより遠い場合は徐々にペナルティを増加
+        distance_penalty = torch.where(
+            (self.obstacle_distances >= collision_threshold) & (self.obstacle_distances < margin_threshold),
+            1.0 / (self.obstacle_distances - collision_threshold + 1e-6),  # 0除算を避けるために小さな値を加算
+            penalty
+        )
+
+        # 各リンクと障害物の距離のペナルティを合計
+        total_penalty = torch.sum(torch.sum(distance_penalty, dim=1), dim=1) + torch.sum(collision_penalty, dim=(1, 2))
 
         # リンク数と障害物数で正規化
         avg_penalty = total_penalty / (len(self.monitored_links) * self.obstacle_positions.size(1))
 
-        return -(avg_penalty + collision_penalty)  # ペナルティなので負の値
+        return -avg_penalty  # ペナルティなので負の値

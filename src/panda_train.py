@@ -117,7 +117,7 @@ def get_cfgs():
         "reward_scales": {
             "reaching_pose": 1.0,           # エンドエフェクタの位置追従
             "time_efficiency": 0.5,         # 時間効率
-            "obstacle_avoidance": 0.005,      # 障害物回避
+            "obstacle_avoidance": 0.5,      # 障害物回避
             # "action_rate": -0.05,           # アクション変化の抑制
             # "joint_acc": -0.1,             # 関節加速度の抑制
             # "joint_limit": -0.01,          # 関節限界への接近抑制
