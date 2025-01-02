@@ -23,10 +23,12 @@ class PandaEnv:
         reward_cfg,
         command_cfg,
         show_viewer=False,
+        is_eval=False,
         device="cuda",
     ):
         self.device = torch.device(device)
         self.show_viewer = show_viewer
+        self.is_eval = is_eval
 
         self.num_envs = num_envs
         self.num_obs = obs_cfg["num_obs"]
@@ -94,6 +96,57 @@ class PandaEnv:
             # pos=self.base_init_pos.cpu().numpy(),
             # quat=self.base_init_quat.cpu().numpy(),
             # ),
+        )
+
+        # 障害物の設定
+        self.num_obstacles = self.env_cfg.get("num_obstacles", 3)  # 障害物の数
+        self.obstacle_radius = self.env_cfg.get("obstacle_radius", 0.05)  # 障害物の半径
+        self.obstacle_margin = self.env_cfg.get("obstacle_margin", 0.1)
+        
+        # 障害物の位置を保存するバッファ
+        self.obstacle_positions = torch.zeros(
+            (self.num_envs, self.num_obstacles, 3),
+            device=self.device,
+            dtype=gs.tc_float
+        )
+        
+        # 障害物の可視化用のエンティティを作成
+        self.obstacles = []
+        for _ in range(self.num_obstacles):
+            obstacle = self.scene.add_entity(
+                morph=gs.morphs.Sphere(
+                    radius=self.obstacle_radius,
+                    visualization=True,
+                    collision=False,
+                    fixed=True,
+                ),
+                surface=gs.surfaces.Default(
+                    color=(0.0, 1.0, 0.0, 0.5),  # 緑色で半透明
+                ),
+            )
+            self.obstacles.append(obstacle)
+
+        # 監視するリンク名のリスト
+        self.monitored_links = [
+            "link1",  # 第1関節
+            "link2",  # 第2関節
+            "link3",  # 第3関節
+            "link4",  # 第4関節
+            "link5",  # 第5関節
+            "link6",  # 第6関節
+            "link7",  # 第7関節
+            "hand",   # エンドエフェクタ
+        ]
+        
+        # 各リンクのEntity
+        self.link_entities = {
+            link_name: self.robot.get_link(link_name)
+            for link_name in self.monitored_links
+        }
+        self.obstacle_distances = torch.zeros(
+            (self.num_envs, len(self.monitored_links), self.num_obstacles),
+            device=self.device,
+            dtype=gs.tc_float
         )
 
         # build
@@ -194,6 +247,21 @@ class PandaEnv:
         # self.commands[envs_idx, 1] = 0.0
         # self.commands[envs_idx, 2] = 0.8
 
+    def _resample_obstacles(self, envs_idx):
+        """障害物の位置をリサンプリング"""
+        for i in range(self.num_obstacles):
+            # ワークスペース内でランダムな位置を生成
+            for j in range(3):  # x, y, z座標
+                pos_range = self.command_cfg["pos_range"][j]
+                self.obstacle_positions[envs_idx, i, j] = (
+                    torch.rand(len(envs_idx), device=self.device)
+                    * (pos_range[1] - pos_range[0])
+                    + pos_range[0]
+                )
+            
+            # 障害物の位置を更新
+            self.obstacles[i].set_pos(self.obstacle_positions[:, i])
+
     def step(self, actions):
         # 観測値の各要素をプリント
         # print("Observation components:")
@@ -230,24 +298,34 @@ class PandaEnv:
         self.ee_pos = ee_link.get_pos()
         self.pos_error = torch.norm(self.commands - self.ee_pos, dim=1)  # ユークリッド距離
 
+        # 障害物との距離を計算
+        for i, link in enumerate(self.link_entities.values()):
+            link_pos = link.get_pos()
+            link_pos_expanded = link_pos.unsqueeze(1)
+            distances = torch.norm(link_pos_expanded - self.obstacle_positions, dim=2)
+            self.obstacle_distances[:, i] = distances
+
+        # 全リンクと障害物との最小距離を計算
+        min_distances_per_link = torch.min(self.obstacle_distances, dim=2)[0]  # [num_envs, num_links]
+        global_min_distance = torch.min(min_distances_per_link, dim=1)[0]  # [num_envs]
+
+        if self.show_viewer:
+            # 全障害物に対する各リンクとの最小距離を計算
+            min_distances_per_obstacle = torch.min(self.obstacle_distances, dim=1)[0]  # [num_envs, num_obstacles]
+
+            # 干渉している障害物の色を変える(env0のみ)
+            is_colliding_obstacles = min_distances_per_obstacle[0] < (self.obstacle_radius + self.obstacle_margin)
+            for i in range(self.num_obstacles):
+                if is_colliding_obstacles[i]:
+                    self.scene.draw_debug_spheres(poss=self.obstacle_positions[0, i], radius=0.05, color=(1, 0, 0, 0.5))
+
+
         inv_base_quat = inv_quat(self.base_quat)
         self.base_lin_vel[:] = transform_by_quat(self.robot.get_vel(), inv_base_quat)
         self.base_ang_vel[:] = transform_by_quat(self.robot.get_ang(), inv_base_quat)
         self.projected_gravity = transform_by_quat(self.global_gravity, inv_base_quat)
         self.dof_pos[:] = self.robot.get_dofs_position(self.motor_dofs)
         self.dof_vel[:] = self.robot.get_dofs_velocity(self.motor_dofs)
-
-        # resample commands
-        # envs_idx = (
-        #     (
-        #         self.episode_length_buf
-        #         % int(self.env_cfg["resampling_time_s"] / self.dt)
-        #         == 0
-        #     )
-        #     .nonzero(as_tuple=False)
-        #     .flatten()
-        # )
-        # self._resample_commands(envs_idx)
 
         # check termination and reset
         # self.max_episode_length = 1000000000000
@@ -259,6 +337,11 @@ class PandaEnv:
         # print(f"commands: {self.commands}")
         # print(f"pos_error: {self.pos_error}, reached: {reached}")
         self.reset_buf |= reached
+
+        # # 障害物との干渉による終了条件(train時のみ)
+        # if not self.is_eval:
+        #     is_colliding = global_min_distance < (self.obstacle_radius + self.obstacle_margin)
+        #     self.reset_buf |= is_colliding
 
         time_out_idx = (self.episode_length_buf > self.max_episode_length).nonzero(as_tuple=False).flatten()
         self.extras["time_outs"] = torch.zeros_like(self.reset_buf, device=self.device, dtype=gs.tc_float)
@@ -275,13 +358,17 @@ class PandaEnv:
             self.episode_sums[name] += rew
 
         # compute observations
+        # # print(f"commands shape {self.commands.shape}, dof_pos shape {self.dof_pos.shape}, dof_vel shape {self.dof_vel.shape}, last_actions shape {self.last_actions.shape}, actions shape {self.actions.shape}, obstacle_positions shape {self.obstacle_positions.shape}, reshaped: {self.obstacle_positions.reshape(self.num_envs, -1).shape}")
+        # import sys
+        # sys.exit(1)
         self.obs_buf = torch.cat(
             [
-                self.commands,  # 3 (target position)
-                self.dof_pos,  # 7 (joint positions)
-                self.dof_vel,  # 7 (joint velocities)
-                self.last_actions,  # 7 (previous actions)
-                self.actions,  # 7 (current actions)
+                self.commands,                    # 3 (target position)
+                self.obstacle_positions.reshape(self.num_envs, -1),  # 3 * num_obstacles
+                self.dof_pos,                     # 7 (joint positions)
+                self.dof_vel,                     # 7 (joint velocities)
+                self.last_actions,                # 7 (previous actions)
+                self.actions,                     # 7 (current actions)
             ],
             dim=-1,
         )
@@ -348,6 +435,13 @@ class PandaEnv:
         if self.show_viewer:
             self.target_sphere.set_pos(self.commands.cpu().numpy())
 
+        # 障害物の位置をリセット
+        self._resample_obstacles(envs_idx)
+
+        # デバッグオブジェクトをクリア
+        if self.show_viewer and (0 in envs_idx):
+            self.scene.clear_debug_objects()
+
     def reset(self):
         self.reset_buf[:] = True
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
@@ -358,6 +452,7 @@ class PandaEnv:
         """位置への到達を報酬化"""
         pos_error_xyz = torch.abs(self.commands - self.ee_pos)
         reward_xyz = -pos_error_xyz
+
         return torch.sum(reward_xyz, dim=1)
 
     def _reward_time_efficiency(self):
@@ -421,3 +516,23 @@ class PandaEnv:
 
         # ペナルティを計算（関節限界に近づくほど大きくなる）
         return torch.sum(torch.square(normalized_deviations), dim=1)
+
+    def _reward_obstacle_avoidance(self):
+        """障害物回避の報酬（逆数ペナルティと衝突ペナルティ）"""
+        # 障害物との距離の逆数を計算し、距離が小さいほどペナルティが大きくなるようにする
+        inverse_distances = 1.0 / (self.obstacle_distances + 1e-6)  # 0除算を避けるために小さな値を加算
+
+        # 各リンクと障害物の距離の逆数を合計
+        total_penalty = torch.sum(torch.sum(inverse_distances, dim=1), dim=1)
+
+        # 衝突ペナルティの追加
+        collision_threshold = self.obstacle_radius + self.obstacle_margin
+        collision_penalty = torch.sum(
+            (self.obstacle_distances < collision_threshold).float() * 100.0,  # 衝突時に大きなペナルティ
+            dim=(1, 2)
+        )
+
+        # リンク数と障害物数で正規化
+        avg_penalty = total_penalty / (len(self.monitored_links) * self.obstacle_positions.size(1))
+
+        return -(avg_penalty + collision_penalty)  # ペナルティなので負の値

@@ -33,6 +33,7 @@ def main():
         reward_cfg=reward_cfg,
         command_cfg=command_cfg,
         show_viewer=True,  # ビューワーを表示
+        is_eval=True,
     )
 
     runner = OnPolicyRunner(env, train_cfg, log_dir, device="cuda:0")

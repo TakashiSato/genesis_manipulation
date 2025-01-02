@@ -96,10 +96,13 @@ def get_cfgs():
         "action_scale": 1.0,
         "simulate_action_latency": True,
         "clip_actions": 3.14,
+        "num_obstacles": 5,           # 障害物の数
+        "obstacle_radius": 0.05,      # 障害物の半径（5cm）
+        "obstacle_margin": 0.1,       # 障害物との最小許容距離（10cm）
     }
 
     obs_cfg = {
-        "num_obs": 31,  # 3 (target_pos) + 7 (dof_pos) + 7 (dof_vel) + 7 (last_actions) + 7 (actions)
+        "num_obs": 31 + env_cfg["num_obstacles"] * 3,  # 3 (target) + 7 (dof_pos) + 7 (dof_vel) + 7 (last_actions) + 7 (actions) + num_obstacles (obstacle_pos) * 3
         "obs_scales": {
             "lin_vel": 2.0,
             "ang_vel": 0.25,
@@ -112,12 +115,12 @@ def get_cfgs():
     reward_cfg = {
         "tracking_sigma": 0.25,
         "reward_scales": {
-            "reaching_pose": 1.0,          # エンドエフェクタの位置追従
-            "time_efficiency": 0.5,        # 時間効率の重み
-            "action_rate": -0.05,           # アクション変化の抑制
-            # "action_regulation": -0.01,     # アクション大きさの抑制
-            "joint_acc": -0.1,             # 関節加速度の抑制
-            "joint_limit": -0.01,           # 関節限界への接近抑制
+            "reaching_pose": 1.0,           # エンドエフェクタの位置追従
+            "time_efficiency": 0.5,         # 時間効率
+            "obstacle_avoidance": 0.005,      # 障害物回避
+            # "action_rate": -0.05,           # アクション変化の抑制
+            # "joint_acc": -0.1,             # 関節加速度の抑制
+            # "joint_limit": -0.01,          # 関節限界への接近抑制
         },
     }
 
@@ -138,6 +141,7 @@ def main():
     parser.add_argument("-e", "--exp_name", type=str, default="panda-reaching")
     parser.add_argument("-B", "--num_envs", type=int, default=4096)
     parser.add_argument("--max_iterations", type=int, default=1000)
+    parser.add_argument("--show_viewer", action="store_true")
     args = parser.parse_args()
 
     gs.init(logging_level="warning")
@@ -156,9 +160,7 @@ def main():
         obs_cfg=obs_cfg,
         reward_cfg=reward_cfg,
         command_cfg=command_cfg,
-        # show_viewer=True,
-        show_viewer=False,
-
+        show_viewer=args.show_viewer,
     )
 
     runner = OnPolicyRunner(env, train_cfg, log_dir, device="cuda:0")
