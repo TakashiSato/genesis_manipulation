@@ -4,7 +4,7 @@
 
 A motion planning example for a Panda arm using Genesis and reinforcement learning.
 
-![demo](./imgs/sample.gif)
+![demo](https://raw.githubusercontent.com/TakashiSato/genesis_manipulation/refs/heads/main/imgs/sample.gif)
 
 ## setup
 ```
