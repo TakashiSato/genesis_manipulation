@@ -1,5 +1,11 @@
 # genesis_manipulation
 
+## About
+
+A motion planning example for a Panda arm using Genesis and reinforcement learning.
+
+![demo](./imgs/sample.gif)
+
 ## setup
 ```
 git clone https://github.com/TakashiSato/genesis_manipulation.git ~/genesis_ws/genesis_manipulation
