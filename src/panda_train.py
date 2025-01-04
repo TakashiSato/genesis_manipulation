@@ -142,6 +142,7 @@ def main():
     parser.add_argument("-B", "--num_envs", type=int, default=4096)
     parser.add_argument("--max_iterations", type=int, default=1000)
     parser.add_argument("--show_viewer", action="store_true")
+    parser.add_argument("--show_parallel", action="store_true")
     args = parser.parse_args()
 
     gs.init(logging_level="warning")
@@ -161,6 +162,7 @@ def main():
         reward_cfg=reward_cfg,
         command_cfg=command_cfg,
         show_viewer=args.show_viewer,
+        show_parallel=args.show_parallel,
     )
 
     runner = OnPolicyRunner(env, train_cfg, log_dir, device="cuda:0")

@@ -23,11 +23,13 @@ class PandaEnv:
         reward_cfg,
         command_cfg,
         show_viewer=False,
+        show_parallel=False,
         is_eval=False,
         device="cuda",
     ):
         self.device = torch.device(device)
         self.show_viewer = show_viewer
+        self.show_parallel = show_parallel
         self.is_eval = is_eval
 
         self.num_envs = num_envs
@@ -57,7 +59,7 @@ class PandaEnv:
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
             ),
-            vis_options=gs.options.VisOptions(n_rendered_envs=1),
+            vis_options=gs.options.VisOptions(n_rendered_envs=None if show_parallel else 1),
             rigid_options=gs.options.RigidOptions(
                 dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
@@ -82,13 +84,17 @@ class PandaEnv:
         # add target pose sphere
         if self.show_viewer:
             self.target_sphere = self.scene.add_entity(
-                gs.morphs.Sphere(
-                    pos=(0.5, 0.0, 0.2),
-                    radius=0.01,
+                morph=gs.morphs.Sphere(
+                    pos=(0.0, 0.0, 0.0),
+                    radius=0.02,
                     visualization=True,
                     collision=False,
-                    fixed=True,
-                )
+                    fixed=False,
+                ),
+                material=gs.materials.Rigid(gravity_compensation=1.0),
+                surface=gs.surfaces.Default(
+                    color=(1.0, 1.0, 0.0, 1.0),
+                ),
             )
 
         self.robot = self.scene.add_entity(
@@ -113,18 +119,29 @@ class PandaEnv:
         # 障害物の可視化用のエンティティを作成
         self.obstacles = []
         for _ in range(self.num_obstacles):
-            obstacle = self.scene.add_entity(
+            self.obstacles.append(self.scene.add_entity(
                 morph=gs.morphs.Sphere(
                     radius=self.obstacle_radius,
                     visualization=True,
                     collision=False,
-                    fixed=True,
+                    fixed=False,
                 ),
+                material=gs.materials.Rigid(gravity_compensation=1.0),
                 surface=gs.surfaces.Default(
                     color=(0.0, 1.0, 0.0, 0.5),  # 緑色で半透明
                 ),
-            )
-            self.obstacles.append(obstacle)
+            ))
+
+        self.is_colliding_obstacles = torch.zeros(
+            (self.num_envs, self.num_obstacles),
+            device=self.device,
+            dtype=torch.bool
+        )
+        self.draw_debug_obstacles = torch.zeros(
+            (self.num_envs, self.num_obstacles),
+            device=self.device,
+            dtype=torch.bool
+        )
 
         # 監視するリンク名のリスト
         self.monitored_links = [
@@ -150,7 +167,10 @@ class PandaEnv:
         )
 
         # build
-        self.scene.build(n_envs=num_envs)
+        if self.show_parallel:
+            self.scene.build(n_envs=num_envs, env_spacing=(1.0, 1.0))
+        else:
+            self.scene.build(n_envs=num_envs)
 
         # names to indices
         self.motor_dofs = [
@@ -310,16 +330,54 @@ class PandaEnv:
             min_distances_per_link = torch.min(self.obstacle_distances, dim=2)[0]  # [num_envs, num_links]
             global_min_distance = torch.min(min_distances_per_link, dim=1)[0]  # [num_envs]
 
+            # if self.show_viewer and not self.show_parallel:
             if self.show_viewer:
                 # 全障害物に対する各リンクとの最小距離を計算
                 min_distances_per_obstacle = torch.min(self.obstacle_distances, dim=1)[0]  # [num_envs, num_obstacles]
 
                 # 干渉している障害物の色を変える(env0のみ)
-                is_colliding_obstacles = min_distances_per_obstacle[0] < (self.obstacle_radius + self.obstacle_margin)
-                for i in range(self.num_obstacles):
-                    if is_colliding_obstacles[i]:
-                        self.scene.draw_debug_spheres(poss=self.obstacle_positions[0, i], radius=0.05, color=(1, 0, 0, 0.5))
+                is_colliding_obstacles_indices = min_distances_per_obstacle < (self.obstacle_radius + self.obstacle_margin)
 
+                # print(f"is_colliding_obstacles shape: {is_colliding_obstacles.shape}")
+                # print(f"self.is_colliding_obstacles shape: {self.is_colliding_obstacles.shape}")
+                # aaa = self.is_colliding_obstacles[is_colliding_obstacles]
+                # print(f"shape aaa: {aaa.shape}")
+                # print(f"aaa: {aaa == 0}")
+                self.is_colliding_obstacles[is_colliding_obstacles_indices] = True
+
+                for i in range(self.num_envs):
+                    is_colliding_in_env = self.is_colliding_obstacles[i] & (~self.draw_debug_obstacles[i])
+                    # is_colliding_in_env = self.is_colliding_obstacles[i]
+                    if any(is_colliding_in_env):
+                        self.scene.draw_debug_spheres(
+                            poss=self.obstacle_positions[i, is_colliding_in_env].cpu().numpy() + self.scene.envs_offset[i],
+                            radius=0.05, color=(1, 0, 0, 0.5))
+
+                    if not self.show_parallel:
+                        break
+
+                self.draw_debug_obstacles[self.is_colliding_obstacles] = True
+
+                # with self.scene.visualizer.viewer_lock:
+                #     if self.scene.visualizer.context.sim.rigid_solver.is_active():
+                #         for entity in self.scene.visualizer.context.sim.rigid_solver.entities:
+                #             if isinstance(entity.morph, gs.morphs.Sphere):
+                #                 # print(entity)
+                #                 entity.links[0].vgeoms[0].vmesh.set_color((1, 0, 0, 0.5))
+                #                 entity.vgeoms[0].vmesh.set_color((1, 0, 0, 0.5))
+                #                 entity.surface.update_texture(color_texture=gs.textures.ColorTexture(color=(1, 0, 0, 0.5)), force=True)
+                #             # elif isinstance(entity, p.LinkState):
+                #             # print(entity)
+
+                # for i in range(self.num_obstacles):
+                #     # if is_colliding_obstacles[i]:
+                #     #     self.scene.draw_debug_spheres(poss=self.obstacle_positions[0, i], radius=0.05, color=(1, 0, 0, 0.5))
+                #     # self.obstacles[i].clear_visuals()
+                #     # self.obstacles[i].set_color((1, 0, 0, 0.5))
+                #     self.obstacles[i].surface.update_texture(color_texture=gs.textures.ColorTexture(color=(1, 0, 0, 0.5)), force=True)
+                #     # print(f"obstacle {i} is colliding")
+                #     self.obstacles[i].links[0].vgeoms[0].vmesh.set_color((1, 0, 0, 0.5))
+                #     # print(self.scene.get_nodes())
 
         inv_base_quat = inv_quat(self.base_quat)
         self.base_lin_vel[:] = transform_by_quat(self.robot.get_vel(), inv_base_quat)
@@ -436,12 +494,14 @@ class PandaEnv:
         if self.show_viewer:
             self.target_sphere.set_pos(self.commands.cpu().numpy())
 
+            # デバッグオブジェクトをクリア
+            if self.show_parallel or (0 in envs_idx):
+                self.scene.clear_debug_objects()
+                self.is_colliding_obstacles[envs_idx, :] = False
+                self.draw_debug_obstacles[:, :] = False
+
         # 障害物の位置をリセット
         self._resample_obstacles(envs_idx)
-
-        # デバッグオブジェクトをクリア
-        if self.show_viewer and (0 in envs_idx):
-            self.scene.clear_debug_objects()
 
     def reset(self):
         self.reset_buf[:] = True
