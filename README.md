@@ -44,7 +44,7 @@ python3 panda_train.py --max_iterations 100 -B 4096 --show_viewer
 python3 panda_train.py --max_iterations 100 -B 128 --show_viewer --show_parallel
 ```
 
-![train_parallel](https://raw.githubusercontent.com/TakashiSato/genesis_manipulation/refs/heads/main/imgs/train_prallel.gif)
+![train_parallel](https://raw.githubusercontent.com/TakashiSato/genesis_manipulation/refs/heads/main/imgs/train_parallel.gif)
 
 ### visualize training states with tensorboard
 
