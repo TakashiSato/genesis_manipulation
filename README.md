@@ -26,7 +26,7 @@ python3 src/panda_train.py --max_iterations 100 -B 4096
   - NOTE: train will be slower but you can see the training process
 
 ```
-python3 panda_train.py --max_iterations 300 -B 1 --show_viewer
+python3 panda_train.py --max_iterations 100 -B 1 --show_viewer
 ```
 
 ### visualize training states with tensorboard
