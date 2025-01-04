@@ -96,7 +96,7 @@ def get_cfgs():
         "action_scale": 1.0,
         "simulate_action_latency": True,
         "clip_actions": 3.14,
-        "num_obstacles": 5,           # 障害物の数
+        "num_obstacles": 0,           # 障害物の数
         "obstacle_radius": 0.05,      # 障害物の半径（5cm）
         "obstacle_margin": 0.1,       # 障害物との最小許容距離（10cm）
     }
@@ -117,7 +117,7 @@ def get_cfgs():
         "reward_scales": {
             "reaching_pose": 1.0,           # エンドエフェクタの位置追従
             "time_efficiency": 0.5,         # 時間効率
-            "obstacle_avoidance": 0.5,      # 障害物回避
+            # "obstacle_avoidance": 0.5,      # 障害物回避
             # "action_rate": -0.05,           # アクション変化の抑制
             # "joint_acc": -0.1,             # 関節加速度の抑制
             # "joint_limit": -0.01,          # 関節限界への接近抑制

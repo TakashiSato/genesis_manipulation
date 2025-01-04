@@ -306,18 +306,19 @@ class PandaEnv:
             self.obstacle_distances[:, i] = distances
 
         # 全リンクと障害物との最小距離を計算
-        min_distances_per_link = torch.min(self.obstacle_distances, dim=2)[0]  # [num_envs, num_links]
-        global_min_distance = torch.min(min_distances_per_link, dim=1)[0]  # [num_envs]
+        if self.num_obstacles > 0:
+            min_distances_per_link = torch.min(self.obstacle_distances, dim=2)[0]  # [num_envs, num_links]
+            global_min_distance = torch.min(min_distances_per_link, dim=1)[0]  # [num_envs]
 
-        if self.show_viewer:
-            # 全障害物に対する各リンクとの最小距離を計算
-            min_distances_per_obstacle = torch.min(self.obstacle_distances, dim=1)[0]  # [num_envs, num_obstacles]
+            if self.show_viewer:
+                # 全障害物に対する各リンクとの最小距離を計算
+                min_distances_per_obstacle = torch.min(self.obstacle_distances, dim=1)[0]  # [num_envs, num_obstacles]
 
-            # 干渉している障害物の色を変える(env0のみ)
-            is_colliding_obstacles = min_distances_per_obstacle[0] < (self.obstacle_radius + self.obstacle_margin)
-            for i in range(self.num_obstacles):
-                if is_colliding_obstacles[i]:
-                    self.scene.draw_debug_spheres(poss=self.obstacle_positions[0, i], radius=0.05, color=(1, 0, 0, 0.5))
+                # 干渉している障害物の色を変える(env0のみ)
+                is_colliding_obstacles = min_distances_per_obstacle[0] < (self.obstacle_radius + self.obstacle_margin)
+                for i in range(self.num_obstacles):
+                    if is_colliding_obstacles[i]:
+                        self.scene.draw_debug_spheres(poss=self.obstacle_positions[0, i], radius=0.05, color=(1, 0, 0, 0.5))
 
 
         inv_base_quat = inv_quat(self.base_quat)
